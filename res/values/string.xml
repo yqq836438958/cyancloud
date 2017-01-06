@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- &lt;a href=&quot;tel:4007058885&quot;&gt;4007058885&lt;/a&gt; -->
+    <string name="wallet_errcode_desc">(%s)，请联系客服处理&lt;a href=&quot;tel:4007058885&quot;&gt;4007058885&lt;/a&gt;</string>
+
+</resources>
