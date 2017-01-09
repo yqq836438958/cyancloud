@@ -30,7 +30,7 @@ public class BundleCompat {
         }
     }
 
-    public static void putObject(Bundle bundle, String key, Object value) {/*
+    public static void putObject(Bundle bundle, String key, Object value) {
         if (Build.VERSION.SDK_INT < 19) {
 
             RefIectUtil.invokeMethod(bundle, Bundle.class, "unparcel", (Class[])null, (Object[])null);
@@ -51,6 +51,6 @@ public class BundleCompat {
 
         }
 
-    */}
+    }
 
 }

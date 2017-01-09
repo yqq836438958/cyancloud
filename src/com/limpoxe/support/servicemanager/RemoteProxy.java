@@ -1,3 +1,4 @@
+
 package com.limpoxe.support.servicemanager;
 
 import android.annotation.TargetApi;
@@ -10,6 +11,7 @@ import com.limpoxe.support.servicemanager.compat.BundleCompat;
 import com.limpoxe.support.servicemanager.compat.ContentProviderCompat;
 import com.limpoxe.support.servicemanager.util.ParamUtil;
 import com.yqq.RpcApp;
+import com.yqq.framework.LocalClient;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -20,11 +22,14 @@ import java.lang.reflect.Proxy;
  */
 public class RemoteProxy {
 
-    public static Object getProxyService(final String name, String iFaceClassName, ClassLoader classloader) {
+    public static Object getProxyService(final String name, String iFaceClassName,
+            ClassLoader classloader) {
         try {
-            //classloader
+            // classloader
             Class clientClass = classloader.loadClass(iFaceClassName);
-            return Proxy.newProxyInstance(classloader, new Class[]{clientClass},
+            return Proxy.newProxyInstance(classloader, new Class[] {
+                    clientClass
+            },
                     new InvocationHandler() {
 
                         Boolean isInProviderProcess;
@@ -34,47 +39,55 @@ public class RemoteProxy {
 
                         @TargetApi(Build.VERSION_CODES.HONEYCOMB)
                         @Override
-                        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                        public Object invoke(Object proxy, Method method, Object[] args)
+                                throws Throwable {
 
-                            Bundle argsBundle = ParamUtil.wrapperParams(name, method.toGenericString(), args);
+                            Bundle argsBundle = ParamUtil.wrapperParams(name,
+                                    method.toGenericString(), args);
 
-                            /**add by yuanqq***/
-                            if(RpcApp.isRPCEnable()){
-                                return null;
+                            /** add by yuanqq ***/
+                            if (ServiceManager.sRunEnv == ServiceManager.ENV_CLIENT) {
+                                return LocalClient.get().doTransact(argsBundle);
                             }
                             if (isInProviderProcess == null) {
 
                                 prepare(argsBundle);
                             }
 
-                            if (Boolean.TRUE.equals(isInProviderProcess)) {
+                          /*  if (Boolean.TRUE.equals(isInProviderProcess)) {
 
                                 return MethodRouter.routerToProvider(name, argsBundle);
 
-                            } else if (desciptpr != null && iBinder != null) {
+                            } else*/ if (desciptpr != null && iBinder != null) {
 
                                 return MethodRouter.routerToBinder(desciptpr, iBinder, argsBundle);
                             } else {
-                                //服务所在进程已死,重启服务进程可自动恢复
+                                // 服务所在进程已死,重启服务进程可自动恢复
                                 Log.w("RemoteProxy", "not active，service May Died！");
                             }
 
                             if (!method.getReturnType().isPrimitive()) {
-                                //是包装类，返回null
+                                // 是包装类，返回null
                                 return null;
                             } else {
-                                //不是包装类，默认返回值没法给，throws RemoteExecption
-                                throw new IllegalStateException("Service not active! Remote process may died");
+                                // 不是包装类，默认返回值没法给，throws RemoteExecption
+                                throw new IllegalStateException(
+                                        "Service not active! Remote process may died");
                             }
                         }
 
                         private void prepare(Bundle argsBundle) throws Throwable {
-                            Bundle queryResult = ContentProviderCompat.call(ServiceProvider.buildUri(),
+                            Bundle queryResult = ContentProviderCompat.call(
+                                    ServiceProvider.buildRemoteUri(),
                                     ServiceProvider.QUERY_SERVICE, name, argsBundle);
                             if (queryResult != null) {
-                                isInProviderProcess = queryResult.getBoolean(ServiceProvider.QUERY_SERVICE_RESULT_IS_IN_PROVIDIDER_PROCESS, false);
-                                iBinder = BundleCompat.getBinder(queryResult, ServiceProvider.QUERY_SERVICE_RESULT_BINDER);
-                                desciptpr = queryResult.getString(ServiceProvider.QUERY_SERVICE_RESULT_DESCRIPTOR);
+                                isInProviderProcess = Boolean.FALSE;/* queryResult.getBoolean(
+                                        ServiceProvider.QUERY_SERVICE_RESULT_IS_IN_PROVIDIDER_PROCESS,
+                                        false);*/
+                                iBinder = BundleCompat.getBinder(queryResult,
+                                        ServiceProvider.QUERY_SERVICE_RESULT_BINDER);
+                                desciptpr = queryResult
+                                        .getString(ServiceProvider.QUERY_SERVICE_RESULT_DESCRIPTOR);
 
                                 if (iBinder != null) {
                                     iBinder.linkToDeath(new IBinder.DeathRecipient() {

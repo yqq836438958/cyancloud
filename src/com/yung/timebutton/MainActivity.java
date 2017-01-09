@@ -60,7 +60,7 @@ public class MainActivity extends Activity implements OnClickListener {
     }
 
     @Override
-    public void onClick(View v) {
+    public void onClick(View v) {/*
         // TODO Auto-generated method stub
         switch (v.getId()) {
             case R.id.start:
@@ -82,7 +82,7 @@ public class MainActivity extends Activity implements OnClickListener {
                 break;
         }
 
-    }
+    */}
 
     private void startServ() {
         Intent intent = new Intent();

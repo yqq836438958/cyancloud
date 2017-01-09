@@ -1,3 +1,4 @@
+
 package com.limpoxe.support.servicemanager;
 
 import android.app.Application;
@@ -7,6 +8,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.Process;
+import android.text.TextUtils;
+import android.util.Log;
 
 import com.limpoxe.support.servicemanager.compat.BundleCompat;
 import com.limpoxe.support.servicemanager.compat.ContentProviderCompat;
@@ -21,52 +24,79 @@ public class ServiceManager {
 
     public static Application sApplication;
 
+    public static int sRunEnv = 0;
+    public static final int ENV_CLIENT = 1;
+    public static final int ENV_SERVICE = 2;
+    public static final int ENV_CLIENT_LOCALPROXY = 3;
+    public static final int ENV_CLIENT_REMOTEPROXY = 4;
+
+    public static void init(Application application, int env) {
+        sRunEnv = env;
+        init(application);
+    }
+
     public static void init(Application application) {
         sApplication = application;
 
         Bundle argsBundle = new Bundle();
         int pid = Process.myPid();
         argsBundle.putInt(ServiceProvider.PID, pid);
-        //为每个进程发布一个binder
-        BundleCompat.putBinder(argsBundle, ServiceProvider.BINDER, new ProcessBinder(ProcessBinder.class.getName() + "_" + pid));
+        // 为每个进程发布一个binder
+        BundleCompat.putBinder(argsBundle, ServiceProvider.BINDER,
+                new ProcessBinder(ProcessBinder.class.getName() + "_" + pid));
         ContentProviderCompat.call(ServiceProvider.buildUri(),
                 ServiceProvider.REPORT_BINDER, null, argsBundle);
 
         ServiceManager.sApplication.registerReceiver(new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                //服务进程挂掉以后 或者服务进程主动通知清理时,移除客户端的代理缓存
+                // 服务进程挂掉以后 或者服务进程主动通知清理时,移除客户端的代理缓存
                 ServicePool.unRegister(intent.getStringExtra(ServiceProvider.NAME));
             }
         }, new IntentFilter(ACTION_SERVICE_DIE_OR_CLEAR));
     }
 
     public static Object getService(String name) {
-        return getService(name, ServiceManager.class.getClassLoader());
+        return getService(name, null, ServiceManager.class.getClassLoader());
+    }
+
+    public static Object getService(String name, String interfaceName) {
+        return getService(name, interfaceName, ServiceManager.class.getClassLoader());
     }
 
     /**
-     *
-      * @param name
+     * @param name
      * @param interfaceClassloader
      * @return
      */
-    public static Object getService(String name, ClassLoader interfaceClassloader) {
+    public static Object getService(String name, String iInterclass,
+            ClassLoader interfaceClassloader) {
 
-        //首先在当前进程内查询
+        // 首先在当前进程内查询
         Object service = ServicePool.getService(name);
 
         if (service == null) {
-            //向远端器查询
-            Bundle bundle = ContentProviderCompat.call(ServiceProvider.buildUri(),
+            if (!TextUtils.isEmpty(iInterclass)) {
+                service = RemoteProxy.getProxyService(name, name,
+                        interfaceClassloader);
+                if (service != null) {
+                    ServicePool.registerInstance(name, service);
+                }
+                return service;
+            }
+            // 向远端器查询
+            Bundle bundle = ContentProviderCompat.call(ServiceProvider.buildRemoteUri(),
                     ServiceProvider.QUERY_INTERFACE, name, null);
-
+            Log.d("call", "bundle......");
             if (bundle != null) {
-                String interfaceClassName = bundle.getString(ServiceProvider.QUERY_INTERFACE_RESULT);
+                Log.d("call", "bundle not null");
+                String interfaceClassName = bundle
+                        .getString(ServiceProvider.QUERY_INTERFACE_RESULT);
 
                 if (interfaceClassName != null) {
-                    service = RemoteProxy.getProxyService(name, interfaceClassName, interfaceClassloader);
-                    //缓存Proxy到本地
+                    service = RemoteProxy.getProxyService(name, interfaceClassName,
+                            interfaceClassloader);
+                    // 缓存Proxy到本地
                     if (service != null) {
                         ServicePool.registerInstance(name, service);
                     }
@@ -87,7 +117,8 @@ public class ServiceManager {
     /**
      * 给当前进程发布一个服务, 发布后其他进程可使用此服务
      */
-    public static void publishService(String name, final String className, final ClassLoader classloader) {
+    public static void publishService(String name, final String className,
+            final ClassLoader classloader) {
         publishService(name, new ServicePool.ClassProvider() {
             @Override
             public Object getServiceInstance() {
@@ -120,17 +151,17 @@ public class ServiceManager {
      */
     public static void publishService(String name, final ServicePool.ClassProvider provider) {
 
-        //先缓存到本地
+        // 先缓存到本地
         ServicePool.registerClass(name, provider);
 
         int pid = Process.myPid();
         Bundle argsBundle = new Bundle();
         argsBundle.putInt(ServiceProvider.PID, pid);
 
-        //classLoader
+        // classLoader
         String serviceInterfaceClassName = provider.getInterfaceName();
         argsBundle.putString(ServiceProvider.INTERFACE, serviceInterfaceClassName);
-        //再发布到远端
+        // 再发布到远端
         ContentProviderCompat.call(ServiceProvider.buildUri(),
                 ServiceProvider.PUBLISH_SERVICE, name, argsBundle);
 

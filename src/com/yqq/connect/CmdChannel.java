@@ -18,7 +18,7 @@ public abstract class CmdChannel implements IChannel {
     public static IChannel get() {
         if (sInstance == null) {
             synchronized (CmdChannel.class) {
-                sInstance = new DmaBtChannel();
+                sInstance = new CommonChannel(true);
             }
         }
         return sInstance;

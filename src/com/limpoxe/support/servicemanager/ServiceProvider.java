@@ -1,7 +1,9 @@
+
 package com.limpoxe.support.servicemanager;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
+import android.content.Entity;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -18,13 +20,11 @@ import com.limpoxe.support.servicemanager.local.ServicePool;
 import java.lang.reflect.Proxy;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-
 /**
- * Created by cailiming on 16/3/11.
- *
- * 利用ContentProvider实现同步跨进程调用，如果contentprovider所在进程退出，
+ * Created by cailiming on 16/3/11. 利用ContentProvider实现同步跨进程调用，如果contentprovider所在进程退出，
  * 其他服务进程注册的binder和service信息会丢失
  */
 public class ServiceProvider extends ContentProvider {
@@ -48,16 +48,21 @@ public class ServiceProvider extends ContentProvider {
 
     private static Uri CONTENT_URI;
 
-    //服务名：进程ID
+    // 服务名：进程ID
     private static ConcurrentHashMap<String, Recorder> allServiceList = new ConcurrentHashMap<>();
-    //进程ID：进程Binder
+    // 进程ID：进程Binder
     private static ConcurrentHashMap<Integer, IBinder> processBinder = new ConcurrentHashMap<>();
 
     public static Uri buildUri() {
         if (CONTENT_URI == null) {
-            CONTENT_URI = Uri.parse("content://"+ ServiceManager.sApplication.getPackageName() + ".svcmgr/call");
+            CONTENT_URI = Uri.parse(
+                    "content://" + ServiceManager.sApplication.getPackageName() + ".svcmgr/call");
         }
         return CONTENT_URI;
+    }
+
+    public static Uri buildRemoteUri() {
+        return Uri.parse("content://com.example.testserver" + ".svcmgr/call");
     }
 
     @Override
@@ -92,13 +97,15 @@ public class ServiceProvider extends ContentProvider {
             String serviceName = arg;
             int pid = extras.getInt(PID);
             String interfaceClass = extras.getString(INTERFACE);
-            IBinder binder =  processBinder.get(pid);
+            IBinder binder = processBinder.get(pid);
             if (binder != null && binder.isBinderAlive()) {
                 Recorder recorder = new Recorder();
                 recorder.pid = pid;
                 recorder.interfaceClass = interfaceClass;
+                Log.d("call", "add service:" + recorder.interfaceClass);
                 allServiceList.put(serviceName, recorder);
             } else {
+                Log.d("call", "remove from servicelist" + pid);
                 allServiceList.remove(pid);
             }
 
@@ -123,31 +130,47 @@ public class ServiceProvider extends ContentProvider {
         } else if (method.equals(QUERY_INTERFACE)) {
             Bundle bundle = new Bundle();
             Recorder recorder = allServiceList.get(arg);
+            Set<String> nameset = allServiceList.keySet();
+            Iterator<String> iterator = nameset.iterator();
+            while (iterator.hasNext()) {
+                String key = iterator.next();
+                Log.d("call", "..." + key);
+            }
             if (recorder != null) {
+                Log.d("call", "write add service:" + recorder.interfaceClass);
                 bundle.putString(QUERY_INTERFACE_RESULT, recorder.interfaceClass);
+            } else {
+                Log.d("call", "null services");
             }
             return bundle;
         } else if (method.equals(QUERY_SERVICE)) {
             String serviceName = arg;
+            Log.d("call", "query service...");
             if (allServiceList.containsKey(serviceName)) {
 
                 Object instance = ServicePool.getService(serviceName);
-
+                Log.d("call", "query service... find");
                 Bundle bundle = new Bundle();
-                if (instance != null && !Proxy.isProxyClass(instance.getClass())) {
+             /*   if (instance != null && !Proxy.isProxyClass(instance.getClass())) {
+                    Log.d("call", "query service...1");
                     bundle.putBoolean(QUERY_SERVICE_RESULT_IS_IN_PROVIDIDER_PROCESS, true);
                     return bundle;
-                } else {
+                } else*/ {
+                    Log.d("call", "query service...2");
                     Recorder recorder = allServiceList.get(serviceName);
                     if (recorder != null) {
                         IBinder iBinder = processBinder.get(recorder.pid);
+                        Log.d("call", "query service...3");
                         if (iBinder != null && iBinder.isBinderAlive()) {
                             bundle.putBoolean(QUERY_SERVICE_RESULT_IS_IN_PROVIDIDER_PROCESS, false);
-                            bundle.putString(QUERY_SERVICE_RESULT_DESCRIPTOR, ProcessBinder.class.getName() + "_" + recorder.pid);
+                            bundle.putString(QUERY_SERVICE_RESULT_DESCRIPTOR,
+                                    ProcessBinder.class.getName() + "_" + recorder.pid);
                             BundleCompat.putBinder(bundle, QUERY_SERVICE_RESULT_BINDER, iBinder);
+                            Log.d("call", "query service...4");
                             return bundle;
                         }
                     }
+                    Log.d("call", "query service...5");
                     return null;
                 }
             }
@@ -159,10 +182,10 @@ public class ServiceProvider extends ContentProvider {
     private void removeAllRecordorForPid(int pid) {
         Log.w("ServiceProvider", "remove all service recordor for pid" + pid);
 
-        //服务提供方进程挂了,或者服务提供方进程主动通知清理服务, 则先清理服务注册表, 再通知所有客户端清理自己的本地缓存
+        // 服务提供方进程挂了,或者服务提供方进程主动通知清理服务, 则先清理服务注册表, 再通知所有客户端清理自己的本地缓存
         processBinder.remove(pid);
         Iterator<Map.Entry<String, Recorder>> iterator = allServiceList.entrySet().iterator();
-        while(iterator.hasNext()) {
+        while (iterator.hasNext()) {
             Map.Entry<String, Recorder> entry = iterator.next();
             if (entry.getValue().pid.equals(pid)) {
                 iterator.remove();
@@ -172,7 +195,7 @@ public class ServiceProvider extends ContentProvider {
     }
 
     private void notifyClient(String name) {
-        //通知持有服务的客户端清理缓存
+        // 通知持有服务的客户端清理缓存
         Intent intent = new Intent(ServiceManager.ACTION_SERVICE_DIE_OR_CLEAR);
         intent.putExtra(NAME, name);
         ServiceManager.sApplication.sendBroadcast(intent);
@@ -189,32 +212,33 @@ public class ServiceProvider extends ContentProvider {
     }
 
     @Override
-    public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
-        //doNothing
+    public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs,
+            String sortOrder) {
+        // doNothing
         return null;
     }
 
     @Override
     public String getType(Uri uri) {
-        //doNothing
+        // doNothing
         return null;
     }
 
     @Override
     public Uri insert(Uri uri, ContentValues values) {
-        //doNothing
+        // doNothing
         return null;
     }
 
     @Override
     public int delete(Uri uri, String selection, String[] selectionArgs) {
-        //doNothing
+        // doNothing
         return 0;
     }
 
     @Override
     public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
-        //doNothing
+        // doNothing
         return 0;
     }
 

@@ -11,4 +11,10 @@ public class WifiChannel extends CmdChannel {
         return null;
     }
 
+    @Override
+    public Bundle recv(byte[] dat) {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
 }

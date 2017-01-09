@@ -19,7 +19,6 @@ public class RemoteProxyClient {
     private String mDescriptor = null;
 
     private int getRemoteBinder(Bundle argsBundle) {
-        IBinder binder = null;
         Bundle queryResult = ContentProviderCompat.call(ServiceProvider.buildUri(),
                 ServiceProvider.QUERY_SERVICE, Constant.BUNDLE_KEY_SRV_NAME, argsBundle);
         if (queryResult != null) {

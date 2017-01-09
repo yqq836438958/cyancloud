@@ -14,6 +14,10 @@ public class LocalClient {
         return sClient;
     }
 
+    private LocalClient() {
+        sClient = new LocalClient();
+    }
+
     public Bundle doTransact(Bundle bundle) {
         IRpcService service = (IRpcService) ServiceManager.getService(Constant.RPC_SERVICE);
         return service.doTransact(bundle);
